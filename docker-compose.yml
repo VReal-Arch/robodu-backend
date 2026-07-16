@@ -1,0 +1,25 @@
+# Spins up the MQTT broker + PostgreSQL for local development.
+#   docker compose up -d
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: robodu
+      POSTGRES_PASSWORD: robodu
+      POSTGRES_DB: robodu
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - robodu_pgdata:/var/lib/postgresql/data
+
+volumes:
+  robodu_pgdata:
