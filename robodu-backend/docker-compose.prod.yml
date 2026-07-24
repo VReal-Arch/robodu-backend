@@ -1,0 +1,48 @@
+# Production stack: backend + Mosquitto + Postgres, all on one internal Docker network.
+# Only Nginx (on the host) talks to the backend on 4000; only Mosquitto's 1883/8883
+# are reachable from outside. Postgres has NO published port — it's internal only.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+
+services:
+  backend:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      DATABASE_URL: postgres://robodu:${POSTGRES_PASSWORD}@postgres:5432/robodu
+    ports:
+      - "127.0.0.1:4000:4000"   # only reachable from the VPS itself; Nginx proxies to it
+    depends_on:
+      - mosquitto
+      - postgres
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # plain MQTT — expose only if robots are on a trusted/local network
+      - "8883:8883"   # MQTT over TLS — use this for robots connecting over the internet
+    volumes:
+      - ./mosquitto/mosquitto.prod.conf:/mosquitto/config/mosquitto.conf
+      - ./mosquitto/passwd:/mosquitto/config/passwd
+      - ./mosquitto/certs:/mosquitto/certs:ro
+      - mosquitto_data:/mosquitto/data
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: robodu
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: robodu
+    # No "ports:" here on purpose — Postgres is only reachable by other
+    # containers on this network (backend), never from the internet.
+    volumes:
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - robodu_pgdata:/var/lib/postgresql/data
+
+volumes:
+  robodu_pgdata:
+  mosquitto_data:
