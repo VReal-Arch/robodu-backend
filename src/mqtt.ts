@@ -12,6 +12,13 @@ const P = config.topicPrefix;
 
 export class MqttBridge {
   private client: MqttClient;
+  /** Last error message from the broker, for /health diagnostics. */
+  lastError: string | null = null;
+
+  /** True while the MQTT session to the broker is up. */
+  get connected(): boolean {
+    return this.client?.connected ?? false;
+  }
 
   constructor(handlers: Handlers) {
     this.client = mqtt.connect(config.mqttUrl, {
@@ -25,6 +32,7 @@ export class MqttBridge {
     });
 
     this.client.on("connect", () => {
+      this.lastError = null;
       console.log(`[mqtt] connected to ${config.mqttUrl}`);
       this.client.subscribe([`${P}/+/telemetry`, `${P}/+/heartbeat`], (err) => {
         if (err) console.error("[mqtt] subscribe error", err);
@@ -32,7 +40,10 @@ export class MqttBridge {
       });
     });
 
-    this.client.on("error", (e) => console.error("[mqtt] error", e.message));
+    this.client.on("error", (e) => {
+      this.lastError = e.message;
+      console.error("[mqtt] error", e.message);
+    });
     this.client.on("reconnect", () => console.log("[mqtt] reconnecting..."));
 
     this.client.on("message", (topic, buf) => {

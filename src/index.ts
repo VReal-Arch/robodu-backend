@@ -34,7 +34,15 @@ async function main() {
   app.use(express.json());
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, db: db.ready, robots: state.snapshot(), estop: state.estop });
+    res.json({
+      ok: true,
+      db: db.ready,
+      mqtt: mqtt.connected,
+      mqttUrl: config.mqttUrl.replace(/\/\/.*@/, "//"), // no credentials
+      mqttError: mqtt.lastError,
+      robots: state.snapshot(),
+      estop: state.estop,
+    });
   });
 
   app.get("/api/presets", async (req, res) => {
