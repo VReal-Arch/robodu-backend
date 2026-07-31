@@ -1,4 +1,4 @@
-export type RobotId = "ball_beam" | "bi_rotor" | "lin_pend" | "rot_pend" | "humanoid";
+export type RobotId = string;
 export type Gait = "idle" | "stand" | "balance" | "walk";
 export type RobotState = "balancing" | "idle" | "fault";
 

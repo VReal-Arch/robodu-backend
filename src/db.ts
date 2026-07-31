@@ -8,7 +8,13 @@ export class Db {
 
   async init() {
     try {
-      this.pool = new Pool({ connectionString: config.databaseUrl });
+      // Managed Postgres (Supabase, Neon, ...) requires TLS. Local Docker does not.
+      const isLocal = /localhost|127\.0\.0\.1/.test(config.databaseUrl);
+      this.pool = new Pool({
+        connectionString: config.databaseUrl,
+        ssl: isLocal ? undefined : { rejectUnauthorized: false },
+        max: 5, // stay well under Supabase's free-tier connection limit
+      });
       await this.pool.query(`
         CREATE TABLE IF NOT EXISTS presets (
           id         TEXT PRIMARY KEY,

@@ -18,6 +18,10 @@ export class MqttBridge {
       username: config.mqttUsername,
       password: config.mqttPassword,
       reconnectPeriod: 2000,
+      // A duplicate clientId makes the broker kick the older session, which
+      // shows up as an endless connect/disconnect loop. Keep it unique.
+      clientId: `robodu-backend-${Math.random().toString(16).slice(2, 10)}`,
+      clean: true,
     });
 
     this.client.on("connect", () => {

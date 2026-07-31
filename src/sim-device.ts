@@ -28,13 +28,19 @@ interface PlantCfg {
   dist: number;
 }
 
-const PLANTS: PlantCfg[] = [
+const TYPE_PLANTS: PlantCfg[] = [
   { id: "ball_beam", type: "pid", yMin: -15, yMax: 15, uMax: 30, unstable: 0, ctrl: 1.6, damp: 0.35, vMax: 70, iMax: 40, pidDef: { kp: 4, ki: 0.2, kd: 2.6 }, dist: 7 },
   { id: "bi_rotor", type: "pid", yMin: -40, yMax: 40, uMax: 100, unstable: 0, ctrl: 0.9, damp: 0.85, vMax: 130, iMax: 60, pidDef: { kp: 3, ki: 0.5, kd: 1.4 }, dist: 16 },
   { id: "lin_pend", type: "pid", yMin: -25, yMax: 25, uMax: 100, unstable: 9, ctrl: 1.2, damp: 0.25, vMax: 220, iMax: 30, pidDef: { kp: 13, ki: 0, kd: 3 }, dist: 10 },
   { id: "rot_pend", type: "pid", yMin: -25, yMax: 25, uMax: 100, unstable: 11, ctrl: 1.3, damp: 0.22, vMax: 240, iMax: 30, pidDef: { kp: 15, ki: 0, kd: 3.4 }, dist: 9 },
   { id: "humanoid", type: "humanoid", yMin: -15, yMax: 15, uMax: 0, unstable: 0, ctrl: 0, damp: 0, vMax: 0, iMax: 0, pidDef: { kp: 0, ki: 0, kd: 0 }, dist: 0 },
 ];
+
+// expand each type into 3 units: ball_beam_1, ball_beam_2, ...
+const UNITS_PER_TYPE = 3;
+const PLANTS: PlantCfg[] = TYPE_PLANTS.flatMap((t) =>
+  Array.from({ length: UNITS_PER_TYPE }, (_, i) => ({ ...t, id: `${t.id}_${i + 1}` }))
+);
 
 interface Sim {
   cfg: PlantCfg;
