@@ -36,6 +36,14 @@ export class StateManager {
     r.last = msg;
   }
 
+  /**
+   * Last homing status reported by the robot: true/false for kits that need
+   * homing, undefined for kits that do not (or before the first telemetry).
+   */
+  homedStatus(id: RobotId): boolean | undefined {
+    return this.robots[id]?.last?.homed;
+  }
+
   touch(id: RobotId) {
     const r = this.robots[id];
     if (r) {

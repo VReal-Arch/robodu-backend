@@ -60,7 +60,7 @@ docker-compose.yml
 | ------------------------------ | ------------------- | ----------------------- |
 | `robodu/{robotId}/telemetry`   | ESP32 → backend     | data sensor + output    |
 | `robodu/{robotId}/heartbeat`   | ESP32 → backend     | penanda hidup (~1 Hz)   |
-| `robodu/{robotId}/command`     | backend → ESP32     | setpoint, PID, start... |
+| `robodu/{robotId}/command`     | backend → ESP32     | setpoint, PID, start, homing... |
 
 `robotId`: `ball_beam`, `bi_rotor`, `lin_pend`, `rot_pend`, `humanoid`.
 
@@ -80,9 +80,25 @@ otomatis direkam ke tabel `command_history` di PostgreSQL sebagai riwayat.
 ## WebSocket (dashboard ↔ backend)
 
 - Backend → web: `telemetry`, `state` (snapshot), `status`, `estop`
-- Web → backend: `command` (`set_setpoint` | `set_pid` | `start` | `stop` | `estop` | `set_gait`)
+- Web → backend: `command` (`set_setpoint` | `set_pid` | `start` | `stop` | `estop` | `set_gait` | `homing`)
 
 Semua command dari web divalidasi & di-clamp ke rentang aman sebelum diteruskan ke ESP32.
+
+## Homing
+
+Kit yang butuh homing (mis. `rot_pend`, ditentukan `HOMING_TYPES` di firmware master)
+urutannya: **homing → start → stop**.
+
+- Dashboard mengirim `command` dengan `action: "homing"`. Backend meneruskannya apa adanya
+  ke `robodu/{robotId}/command` dan mencatatnya di `command_history`.
+- Robot melaporkan lewat telemetry: `state: "homing"` selama homing berjalan, plus `homed`
+  dan `homingFailed`. Dua field itu **hanya dikirim kit yang butuh homing**, jadi
+  `homed !== undefined` berarti "kit ini wajib homing".
+- Master menolak `start` sebelum `homed` bernilai true. Backend ikut menolaknya (log
+  `[cmd] start rejected ... not homed`) supaya status "running" di dashboard tidak salah.
+- `stop` membatalkan homing yang sedang berjalan. Homing tidak diterima saat kit sedang berjalan.
+- Tes tanpa hardware: `npm run mock` — `rot_pend_*` butuh homing (4 detik). Opsional:
+  `MOCK_HOMING_MS`, `MOCK_HOMING_TYPES`, dan `MOCK_HOMING_FAIL=rot_pend_2` untuk mensimulasikan homing gagal.
 
 ## Catatan firmware (ESP32)
 

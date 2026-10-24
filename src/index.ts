@@ -96,6 +96,14 @@ async function main() {
       return;
     }
 
+    // The master board refuses START until the kit is homed. Catch it here as
+    // well, so a rejected start is not recorded as "running" or logged as history.
+    if (clean.action === "start" && state.homedStatus(clean.robotId) === false) {
+      console.warn(`[cmd] start rejected: ${clean.robotId} is not homed`);
+      hub.broadcast({ type: "state", robots: state.snapshot() }); // undo the dashboard's optimistic "running"
+      return;
+    }
+
     // reflect desired state locally
     if (clean.action === "set_setpoint" && clean.payload?.setpoint !== undefined) {
       state.setDesired(clean.robotId, { setpoint: clean.payload.setpoint });

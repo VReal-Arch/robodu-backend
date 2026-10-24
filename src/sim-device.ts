@@ -11,6 +11,17 @@ import { CommandMsg, Gait, PID, RobotId, RobotState, TelemetryMsg } from "./type
 
 const P = config.topicPrefix;
 const DT = 0.05;
+
+// Homing mirrors the master firmware: kits whose id starts with one of these types
+// must be homed before START is accepted (HOMING_TYPES in robodu-master.ino).
+//   MOCK_HOMING_TYPES  comma list of types      (default "rot_pend")
+//   MOCK_HOMING_MS     how long homing takes    (default 4000)
+//   MOCK_HOMING_FAIL   comma list of robot ids whose homing always fails, to test
+//                      the failure path        (e.g. "rot_pend_2")
+const HOMING_TYPES = (process.env.MOCK_HOMING_TYPES ?? "rot_pend").split(",").map((x) => x.trim()).filter(Boolean);
+const HOMING_MS = parseInt(process.env.MOCK_HOMING_MS || "4000", 10);
+const HOMING_FAIL = (process.env.MOCK_HOMING_FAIL ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 
 interface PlantCfg {
@@ -56,15 +67,22 @@ interface Sim {
   disturb: number;
   roll: number;
   pitch: number;
+  needsHoming: boolean;
+  homed: boolean;
+  homingActive: boolean;
+  homingFailed: boolean;
+  homingStart: number;
 }
 
 const sims: Record<string, Sim> = {};
 for (const cfg of PLANTS) {
+  const needsHoming = HOMING_TYPES.some((t) => cfg.id.startsWith(t));
   sims[cfg.id] = {
     cfg,
     setpoint: 0,
     pid: { ...cfg.pidDef },
-    running: cfg.type === "pid",
+    // a kit that needs homing starts stopped, like the real firmware
+    running: cfg.type === "pid" && !needsHoming,
     gait: "balance",
     y: (Math.random() - 0.5) * 2,
     yd: 0,
@@ -74,6 +92,11 @@ for (const cfg of PLANTS) {
     disturb: (Math.random() - 0.5) * cfg.dist,
     roll: 0,
     pitch: 0,
+    needsHoming,
+    homed: false,
+    homingActive: false,
+    homingFailed: false,
+    homingStart: 0,
   };
 }
 
@@ -106,11 +129,27 @@ client.on("message", (topic, buf) => {
     case "set_pid":
       s.pid = { kp: p.kp ?? s.pid.kp, ki: p.ki ?? s.pid.ki, kd: p.kd ?? s.pid.kd };
       break;
+    case "homing":
+      // same refusals as the firmware: not a homing kit / already homing / running
+      if (!s.needsHoming || s.homingActive || s.running) break;
+      s.homed = false;
+      s.homingFailed = false;
+      s.homingActive = true;
+      s.homingStart = Date.now();
+      console.log(`[mock] ${id}: homing started`);
+      break;
     case "start":
+      if (s.needsHoming && !s.homed) break; // firmware: "start ditolak: belum homing"
       s.running = true;
       break;
     case "stop":
     case "estop":
+      if (s.homingActive) {
+        // stop cancels a running homing and drops the zero position
+        s.homingActive = false;
+        s.homed = false;
+        console.log(`[mock] ${id}: homing cancelled`);
+      }
       s.running = false;
       if (s.cfg.type === "humanoid") s.gait = "idle";
       break;
@@ -122,6 +161,13 @@ client.on("message", (topic, buf) => {
 
 function stepPid(s: Sim) {
   const c = s.cfg;
+  if (s.homingActive) {
+    // the slave drives the arm to the reference point: settle toward zero
+    s.yd *= 0.9;
+    s.y *= 0.97;
+    s.u = 0;
+    return;
+  }
   if (!s.running) {
     if (c.unstable > 0) {
       const ydd = c.unstable * s.y - c.damp * s.yd;
@@ -149,6 +195,17 @@ function stepPid(s: Sim) {
 // physics @ 20 Hz
 setInterval(() => {
   for (const s of Object.values(sims)) {
+    if (s.homingActive && Date.now() - s.homingStart >= HOMING_MS) {
+      s.homingActive = false;
+      if (HOMING_FAIL.includes(s.cfg.id)) {
+        s.homed = false;
+        s.homingFailed = true;
+        console.log(`[mock] ${s.cfg.id}: homing FAILED (simulated)`);
+      } else {
+        s.homed = true;
+        console.log(`[mock] ${s.cfg.id}: homing done`);
+      }
+    }
     if (s.cfg.type === "pid") stepPid(s);
     else {
       const active = s.gait !== "idle";
@@ -170,7 +227,12 @@ setInterval(() => {
 // publish telemetry @ 20 Hz + heartbeat @ 1 Hz
 setInterval(() => {
   for (const s of Object.values(sims)) {
-    const state: RobotState = s.cfg.type === "humanoid" ? (s.gait === "idle" ? "idle" : "balancing") : s.running ? "balancing" : "idle";
+    const state: RobotState =
+      s.cfg.type === "humanoid"
+        ? s.gait === "idle" ? "idle" : "balancing"
+        : s.homingActive ? "homing"
+        : s.running ? "balancing"
+        : "idle";
     const msg: TelemetryMsg = {
       type: "telemetry",
       robotId: s.cfg.id,
@@ -184,6 +246,11 @@ setInterval(() => {
       state,
       health: { sensor: true, motor: true },
     };
+    // like the firmware: only kits that need homing report these two fields
+    if (s.needsHoming) {
+      msg.homed = s.homed;
+      msg.homingFailed = s.homingFailed;
+    }
     client.publish(`${P}/${s.cfg.id}/telemetry`, JSON.stringify(msg));
   }
 }, DT * 1000);
@@ -195,3 +262,4 @@ setInterval(() => {
 }, 1000);
 
 console.log("[mock] 5 virtual ESP32 robots running - publishing telemetry");
+if (HOMING_TYPES.length) console.log(`[mock] homing required before start: ${HOMING_TYPES.join(", ")} (${HOMING_MS} ms)`);

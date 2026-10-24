@@ -32,6 +32,10 @@ export function sanitizeCommand(cmd: CommandMsg): CommandMsg | null {
       if (!p.gait) return null;
       return out;
 
+    // Homing is allowed for any known robot. The master board decides which kits
+    // actually need it (HOMING_TYPES) and ignores the command for the rest, so the
+    // list of homing kits lives in one place: the firmware.
+    case "homing":
     case "start":
     case "stop":
     case "estop":

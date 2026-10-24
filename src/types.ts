@@ -1,6 +1,6 @@
 export type RobotId = string;
 export type Gait = "idle" | "stand" | "balance" | "walk";
-export type RobotState = "balancing" | "idle" | "fault";
+export type RobotState = "balancing" | "idle" | "fault" | "homing";
 
 export interface PID {
   kp: number;
@@ -21,6 +21,13 @@ export interface TelemetryMsg {
   imu?: { roll: number; pitch: number };
   state: RobotState;
   health?: { sensor: boolean; motor: boolean };
+  /**
+   * Only present for kits that must be homed before start (HOMING_TYPES on the
+   * master board, e.g. rot_pend). Absent for every other kit, so the dashboard
+   * uses "homed !== undefined" to know a kit needs homing.
+   */
+  homed?: boolean;
+  homingFailed?: boolean;
 }
 
 /** Published by ESP32 on robodu/{robotId}/heartbeat (~1 Hz). */
@@ -36,7 +43,8 @@ export type CommandAction =
   | "start"
   | "stop"
   | "estop"
-  | "set_gait";
+  | "set_gait"
+  | "homing";
 
 /** Web -> backend, then backend -> broker -> ESP32 on robodu/{robotId}/command */
 export interface CommandMsg {
